@@ -1,0 +1,348 @@
+C51 COMPILER V9.56.0.0   MAIN                                                              10/15/2019 20:21:47 PAGE 1   
+
+
+C51 COMPILER V9.56.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main
+                    -.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          //程序头函数
+   2          #include <reg52.h>
+   3          #include <intrins.h>  //包含头文件
+   4          //显示函数
+   5          #include <display.h>
+   6          #include "uart.h"
+   7          
+   8          //宏定义
+   9          #define uint unsigned int 
+  10          #define uchar unsigned char
+  11            
+  12          #define LESS   10
+  13          #define NORMAL 30
+  14            
+  15          sbit Key1=P3^2;
+  16          sbit Key2=P3^3;
+  17          sbit Key3=P3^4;
+  18          sbit beep=P1^1;  
+  19          
+  20          uchar T_50ms=0;       //计时50ms
+  21          uchar revData=0;                  //ZIGBEE接收数据
+  22          bit revFlag = 0;             //ZIGBEE接收标志位
+  23          
+  24          uchar revBuf[11]={0,0,0,0,0,0,0,0,0,0};
+  25          uchar revBufLen=0;
+  26          uchar set;            //设置变量
+  27          uchar revHandleFlag = 0;
+  28          
+  29          
+  30          //温湿度设置值、实时值
+  31          uchar setTemp1 = 40;      //温度1设置值
+  32          uchar setTemp2 = 39;      //温度2设置值
+  33          uchar setRH1 = 70;        //湿度1设置值
+  34          uchar setRH2 = 69;        //湿度2设置值
+  35          uint curTemp1 = 0;         //温度1实时值
+  36          uint curTemp2 = 0;         //温度2实时值
+  37          uint curRH1 = 0;           //湿度1设置值
+  38          uint curRH2 = 0;           //湿度2设置值
+  39          
+  40          bit curUI = 0;             //当前界面
+  41          
+  42          
+  43          
+  44          void init()       //定时器初始化函数
+  45          {
+  46   1        TMOD &= 0xF0;//清零T0控制位
+  47   1        TMOD |= 0x01;//T0方式1,16位可设定时模式
+  48   1        TL0=0xb0;
+  49   1        TH0=0x3c;     //赋初值50ms
+  50   1        EA=1;       //打开中断总开关
+  51   1        ET0=1;        //打开定时器0中断允许开关
+  52   1        TR0=1;        //打开定时器0定时开关
+  53   1      }
+  54          
+C51 COMPILER V9.56.0.0   MAIN                                                              10/15/2019 20:21:47 PAGE 2   
+
+  55          void Key()            //按键函数
+  56          {
+  57   1        if(Key1==0)         //设置键按下
+  58   1        {
+  59   2          while(Key1==0);     //按键松开
+  60   2          set++;          //设置变量加
+  61   2          TR0=0;          //关闭定时器
+  62   2        }
+  63   1        if(set==1)          //设置报警值时
+  64   1        {
+  65   2          write_com(0x38);//屏幕初始化
+  66   2          write_com(0x80+15);//位置
+  67   2          write_com(0x0f);//打开显示 无光标 光标闪烁
+  68   2          write_com(0x06);//当读或写一个字符是指针后一一位
+  69   2        }
+  70   1        else if(set==2)
+  71   1        {
+  72   2          write_com(0x38);//屏幕初始化
+  73   2          write_com(0x80+0x40+15);//位置
+  74   2          write_com(0x0f);//打开显示 无光标 光标闪烁
+  75   2          write_com(0x06);//当读或写一个字符是指针后一一位
+  76   2        }
+  77   1        else if(set>=3)   //设置完成时
+  78   1        {
+  79   2          set=0;      //变量清零
+  80   2          write_com(0x38);//屏幕初始化
+  81   2          write_com(0x0c);//打开显示 无光标 无光标闪烁
+  82   2          TR0=1;      //打开定时器
+  83   2        }
+  84   1        if(Key2==0&&set==1)     //设置温度值时加键按下
+  85   1        {
+  86   2          while(Key2==0);     //按键松开
+  87   2          if(curUI == 0)
+  88   2          {
+  89   3            setTemp1++;       //报警值加
+  90   3            if(setTemp1>=99)    //最大加到255
+  91   3              setTemp1=0;       //清零
+  92   3            write_com(0x80+14);    //选中液晶屏上的第二行第十一列
+  93   3            write_data('0'+setTemp1/10);   //开始显示报警值。例如报警值是123,123除以100的商是1，加上‘0’是为了得到
+             -液晶中对应1的显示码
+  94   3            write_data('0'+setTemp1%10);//23除以10的余数是3
+  95   3            write_com(0x80+15);//位置
+  96   3          }
+  97   2          else
+  98   2          {
+  99   3            setTemp2++;       //报警值加
+ 100   3            if(setTemp2>=99)    //最大加到255
+ 101   3              setTemp2=0;       //清零
+ 102   3            write_com(0x80+14);    //选中液晶屏上的第二行第十一列
+ 103   3            write_data('0'+setTemp2/10);   //开始显示报警值。例如报警值是123,123除以100的商是1，加上‘0’是为了得到
+             -液晶中对应1的显示码
+ 104   3            write_data('0'+setTemp2%10);//23除以10的余数是3
+ 105   3            write_com(0x80+15);//位置
+ 106   3          } 
+ 107   2        }
+ 108   1        else if(Key2==0&&set==2)      //设置温度值时加键按下
+ 109   1        {
+ 110   2          while(Key2==0);     //按键松开
+ 111   2          if(curUI == 0)
+ 112   2          {
+ 113   3            setRH1++;       //报警值加
+ 114   3            if(setRH1>=99)    //最大加到255
+C51 COMPILER V9.56.0.0   MAIN                                                              10/15/2019 20:21:47 PAGE 3   
+
+ 115   3              setRH1=0;       //清零
+ 116   3            write_com(0x80+0x40+14);     //选中液晶屏上的第二行第十一列
+ 117   3            write_data('0'+setRH1/10);   //开始显示报警值。例如报警值是123,123除以100的商是1，加上‘0’是为了得到液
+             -晶中对应1的显示码
+ 118   3            write_data('0'+setRH1%10);//23除以10的余数是3
+ 119   3            write_com(0x80+0x40+15);//位置
+ 120   3          }
+ 121   2          else
+ 122   2          {
+ 123   3            setRH2++;       //报警值加
+ 124   3            if(setRH2>=99)    //最大加到255
+ 125   3              setRH2=0;       //清零
+ 126   3            write_com(0x80+0x40+14);     //选中液晶屏上的第二行第十一列
+ 127   3            write_data('0'+setRH2/10);   //开始显示报警值。例如报警值是123,123除以100的商是1，加上‘0’是为了得到液
+             -晶中对应1的显示码
+ 128   3            write_data('0'+setRH2%10);//23除以10的余数是3
+ 129   3            write_com(0x80+0x40+15);//位置
+ 130   3          } 
+ 131   2        }
+ 132   1        else if(Key2==0&&set==0)
+ 133   1        {
+ 134   2          while(Key2==0);     //按键松开
+ 135   2          curUI ^= 1;         //切换当前界面
+ 136   2          write_com(0x80+0x40+1);
+ 137   2          write_data('1'+ ((uchar)curUI));
+ 138   2          write_com(0x80+0x40+1);//位置
+ 139   2          Display_Refresh();
+ 140   2          
+ 141   2        }
+ 142   1        if(Key3==0&&set==1)       //注释同加按键
+ 143   1        {
+ 144   2          while(Key3==0);
+ 145   2          if(curUI == 0)
+ 146   2          {
+ 147   3            setTemp1--;       
+ 148   3            if(setTemp1<=0)
+ 149   3              setTemp1=99;
+ 150   3            write_com(0x80+14);
+ 151   3            write_data('0'+setTemp1/10);
+ 152   3            write_data('0'+setTemp1%10);
+ 153   3            write_com(0x80+15);//位置
+ 154   3          }
+ 155   2          else
+ 156   2          {
+ 157   3            setTemp2--;       
+ 158   3            if(setTemp2<=0)
+ 159   3              setTemp2=99;
+ 160   3            write_com(0x80+14);
+ 161   3            write_data('0'+setTemp2/10);
+ 162   3            write_data('0'+setTemp2%10);
+ 163   3            write_com(0x80+15);//位置
+ 164   3          }
+ 165   2        }
+ 166   1        else if(Key3==0&&set==2)        //注释同加按键
+ 167   1        {
+ 168   2          while(Key3==0);
+ 169   2          if(curUI == 0)
+ 170   2          {
+ 171   3            setRH1--;       
+ 172   3            if(setRH1<=0)
+ 173   3              setRH1=99;
+ 174   3            write_com(0x80+0x40+14);
+C51 COMPILER V9.56.0.0   MAIN                                                              10/15/2019 20:21:47 PAGE 4   
+
+ 175   3            write_data('0'+setRH1/10);
+ 176   3            write_data('0'+setRH1%10);
+ 177   3            write_com(0x80+0x40+15);//位置
+ 178   3          }
+ 179   2          else
+ 180   2          {
+ 181   3            setRH2--;       
+ 182   3            if(setRH2<=0)
+ 183   3              setRH2=99;
+ 184   3            write_com(0x80+0x40+14);
+ 185   3            write_data('0'+setRH2/10);
+ 186   3            write_data('0'+setRH2%10);
+ 187   3            write_com(0x80+0x40+15);//位置
+ 188   3          }
+ 189   2        }
+ 190   1      
+ 191   1      }
+ 192          
+ 193          
+ 194          void main()       //主函数
+ 195          {
+ 196   1        Init1602();            //初始化液晶函数
+ 197   1        UartInit();
+ 198   1        init();              //初始化定时器
+ 199   1        
+ 200   1        while(1)             //进入循环
+ 201   1        {
+ 202   2          if(revFlag == 1)
+ 203   2          {
+ 204   3            switch(revBuf[10])
+ 205   3            {
+ 206   4              
+ 207   4              case 'N':         //自动刷新数据
+ 208   4              {
+ 209   5                if(revBufLen > 0)
+ 210   5                {
+ 211   6                  revHandleFlag = 1;
+ 212   6                  if((revBuf[1] - 0x30) == 1)
+ 213   6                  {
+ 214   7                    curRH1 = (revBuf[2]-0x30)*1000 + (revBuf[3]-0x30)*100 + (revBuf[4]-0x30)*10 + (revBuf[5]-0x30);
+ 215   7                    curTemp1   = (revBuf[6]-0x30)*1000 + (revBuf[7]-0x30)*100 + (revBuf[8]-0x30)*10 + (revBuf[9]-0x30);
+ 216   7                    Display_Refresh();
+ 217   7                  }
+ 218   6                  else if((revBuf[1] - 0x30) == 2)
+ 219   6                  {
+ 220   7                    curRH2 = (revBuf[2]-0x30)*1000 + (revBuf[3]-0x30)*100 + (revBuf[4]-0x30)*10 + (revBuf[5]-0x30);
+ 221   7                    curTemp2   = (revBuf[6]-0x30)*1000 + (revBuf[7]-0x30)*100 + (revBuf[8]-0x30)*10 + (revBuf[9]-0x30);
+ 222   7                    Display_Refresh();
+ 223   7                  }
+ 224   6                  revBufLen = 0;
+ 225   6                  revBuf[0] = 0;
+ 226   6                  revBuf[1] = 0;
+ 227   6                  revBuf[2] = 0;
+ 228   6                  revBuf[3] = 0;
+ 229   6                  revBuf[4] = 0;
+ 230   6                  revBuf[5] = 0;
+ 231   6                  revBuf[6] = 0;
+ 232   6                  revBuf[7] = 0;
+ 233   6                  revBuf[8] = 0;
+ 234   6                  revBuf[9] = 0;
+ 235   6                  revBuf[10] = 0;
+ 236   6                  revHandleFlag = 0;
+C51 COMPILER V9.56.0.0   MAIN                                                              10/15/2019 20:21:47 PAGE 5   
+
+ 237   6                }
+ 238   5              }
+ 239   4              break;
+ 240   4              
+ 241   4              default:        
+ 242   4                break;
+ 243   4            }
+ 244   3            revFlag = 0;
+ 245   3          }
+ 246   2          if(set == 0)
+ 247   2          {
+ 248   3            if(T_50ms>=20)
+ 249   3            {
+ 250   4              T_50ms=0;
+ 251   4              
+ 252   4              if(((setTemp1*100)<curTemp1) || ((setTemp2*100)<curTemp2))
+ 253   4                beep = 0;
+ 254   4              else
+ 255   4                beep = 1;
+ 256   4              
+ 257   4              if(((setRH1*100)<curRH1) || ((setRH2*100)<curRH2))
+ 258   4                Send_Data('A');
+ 259   4              else
+ 260   4                Send_Data('B');
+ 261   4              
+ 262   4              
+ 263   4            }
+ 264   3          }
+ 265   2          
+ 266   2          Key();             //调用按键函数
+ 267   2        }
+ 268   1      }
+ 269          
+ 270          
+ 271          
+ 272          void  time1_int(void) interrupt 1     //定时器工作函数
+ 273          {
+ 274   1        uchar count;              //定义计时变量
+ 275   1        TL0=0xb0;
+ 276   1        TH0=0x3c;               //重新赋初值50ms
+ 277   1        count++;                //变量加一次就是50ms
+ 278   1        T_50ms++;
+ 279   1      }
+ 280          
+ 281          
+ 282          void RSINTR() interrupt 4 using 2
+ 283          {
+ 284   1        if(TI==1) //发送中断    
+ 285   1        {
+ 286   2          TI=0;
+ 287   2        }
+ 288   1      
+ 289   1        if(RI==1)  //接收中断     
+ 290   1        { 
+ 291   2          
+ 292   2          revData = SBUF;
+ 293   2          if(revHandleFlag == 0)
+ 294   2          {
+ 295   3            if(revData == 'M')
+ 296   3            {
+ 297   4              revBufLen=1;
+ 298   4              revBuf[0] = revData;
+C51 COMPILER V9.56.0.0   MAIN                                                              10/15/2019 20:21:47 PAGE 6   
+
+ 299   4            }
+ 300   3            else if(revBufLen>0)
+ 301   3            {
+ 302   4              revBuf[revBufLen] = revData;
+ 303   4              revBufLen++;
+ 304   4            }
+ 305   3          }
+ 306   2          revFlag = 1;
+ 307   2          RI=0;                
+ 308   2      
+ 309   2        }
+ 310   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1627    ----
+   CONSTANT SIZE    =     34    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     28       1
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      2    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

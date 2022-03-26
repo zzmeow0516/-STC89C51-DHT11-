@@ -1,0 +1,7 @@
+".\Objects\STARTUP.obj",
+".\Objects\delay.obj",
+".\Objects\dht11.obj",
+".\Objects\main.obj",
+".\Objects\uart.obj" 
+TO ".\Objects\SLAVE" 
+PRINT(".\Listings\SLAVE.m51") RAMSIZE(256) 

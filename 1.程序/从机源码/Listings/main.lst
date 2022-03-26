@@ -1,0 +1,157 @@
+C51 COMPILER V9.56.0.0   MAIN                                                              09/25/2019 21:02:46 PAGE 1   
+
+
+C51 COMPILER V9.56.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main
+                    -.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include "main.h"
+   2          
+   3          #define   Data_0_time    4
+   4          
+   5          U16 setTemp = 4000;        //温度设定值：4000=40.00℃
+   6          U16 setRH = 8500;          //湿度设定值：8000=80.00%
+   7          U8 revData;
+   8          U8 RHOverFlag = 0;         //湿度超出设定值标志
+   9          U8 tempOverFlag = 0;       //温度超出设定值标志
+  10          U8 autoRefresh = 1;        //自动刷新标志
+  11          bit revFlag = 0;
+  12          bit handSetting = 0;       //手动状态标志
+  13          unsigned char thr0 = 0, tlr0 = 0;
+  14          U8 flag1000ms = 0;        //100ms
+  15          U8 flag2000ms = 0;
+  16          
+  17          sbit  fengshan = P2^6;    //风扇控制引脚
+  18          
+  19          extern U8  U8T_data_H,U8T_data_L,U8RH_data_H,U8RH_data_L,U8checkdata;
+  20          U8  count, count_r=0;
+  21          U16 U16temp1,U16temp2;
+  22          
+  23          
+  24          /*定时器T0配置*/
+  25          void ConfgiTimer0(unsigned int xms)
+  26          {
+  27   1             unsigned long tmp;
+  28   1             tmp = 11059200/12;//周期频率
+  29   1             tmp = (tmp * xms) / 1000;//定时xms需要的计数值
+  30   1             tmp = 65536-tmp;//定时装入的初值
+  31   1             thr0 = (unsigned char)(tmp >> 8);
+  32   1             tlr0 = (unsigned char)tmp;
+  33   1             TMOD &= 0xF0;//清零T0控制位
+  34   1             TMOD |= 0x01;//T0方式1,16位可设定时模式
+  35   1             TH0 = thr0;
+  36   1             TL0 = tlr0;
+  37   1             TR0 = 1;
+  38   1             ET0 = 1;
+  39   1             EA   = 1;
+  40   1      }
+  41          
+  42            
+  43          //----------------------------------------------
+  44          //main()功能描述:  AT89C51  11.0592MHz  串口发 
+  45          //送温湿度数据,波特率 9600 
+  46          //----------------------------------------------
+  47          void main()
+  48          {  
+  49   1        UartInit();
+  50   1        ConfgiTimer0(10);   //初始化定时器，并定时10ms
+  51   1        Delay(1);         //延时100US（12M晶振)
+  52   1        fengshan = 1;
+  53   1        while(1)
+  54   1        {  
+C51 COMPILER V9.56.0.0   MAIN                                                              09/25/2019 21:02:46 PAGE 2   
+
+  55   2          if(revFlag == 1)
+  56   2          {
+  57   3            switch(revData)
+  58   3            {
+  59   4              case 'A':        //水泵控制
+  60   4                fengshan = 0;  
+  61   4              break;
+  62   4              
+  63   4              case 'B':        //水泵控制
+  64   4                fengshan = 1;  
+  65   4              break;
+  66   4              
+  67   4              default:
+  68   4                revFlag = 0;
+  69   4                break;
+  70   4            }
+  71   3            revFlag = 0;
+  72   3          }
+  73   2          
+  74   2          if(flag2000ms == 1)
+  75   2          {
+  76   3            flag2000ms = 0;
+  77   3            ET0 = 0;                 //关闭时钟中断
+  78   3            GetTemp2();
+  79   3            
+  80   3            ET0 = 1;    //开启时钟中断
+  81   3          }
+  82   2          if(flag1000ms == 1)        //每1秒钟进入一次
+  83   2          {
+  84   3            flag1000ms = 0;
+  85   3            ET0 = 0;                 //关闭时钟中断
+  86   3            
+  87   3            
+  88   3      /****************计算传感器1数据*****************/  
+  89   3              GetTemp1(); 
+  90   3          }
+  91   2          
+  92   2          
+  93   2         
+  94   2      
+  95   2        }
+  96   1      }
+  97          
+  98          void RSINTR() interrupt 4 using 2
+  99          {
+ 100   1        
+ 101   1        if(TI==1) //发送中断    
+ 102   1        {
+ 103   2          TI=0;
+ 104   2        }
+ 105   1      
+ 106   1        if(RI==1)  //接收中断     
+ 107   1        { 
+ 108   2          revData = SBUF;
+ 109   2          revFlag = 1;
+ 110   2          RI=0;                
+ 111   2      
+ 112   2        }
+ 113   1      }
+ 114          
+ 115          /*T0中断服务*/
+ 116          void Timer0_ISP() interrupt 1
+C51 COMPILER V9.56.0.0   MAIN                                                              09/25/2019 21:02:46 PAGE 3   
+
+ 117          {
+ 118   1             static unsigned char counter = 0;
+ 119   1             TH0 = thr0;
+ 120   1             TL0 = tlr0; //1ms
+ 121   1             counter++;   
+ 122   1            if(counter == 100)
+ 123   1                flag1000ms =1;
+ 124   1             if (counter >= 200)
+ 125   1             {
+ 126   2                counter = 0;
+ 127   2                  flag2000ms = 1;//1000ms
+ 128   2             }          
+ 129   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    229    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     19       4
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      2    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
