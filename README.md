@@ -1,7 +1,7 @@
 # -STC89C51-DHT11
 毕业设计：基于STC89C51的温湿度监测系统
 NJXZC
-
+软件平台：Keil uv4,STC-ISP.
 
 
 硬件组成：51单片机+蜂鸣器+zigbee模块+DHT11温湿度传感器+按键+风扇等；
